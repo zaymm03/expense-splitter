@@ -1,10 +1,6 @@
 import Link from "next/link";
-import { auth } from "@/lib/auth";
-import { db } from "@/db";
-import { groups, groupMembers } from "@/db/schema";
-import { and, eq } from "drizzle-orm";
-import { headers } from "next/headers";
-import { redirect, notFound } from "next/navigation";
+import { redirect } from "next/navigation";
+import { getGroupDetail, addMember, addExpense } from "../actions";
 
 export default async function GroupDetailPage({
   params,
@@ -12,25 +8,19 @@ export default async function GroupDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) redirect("/login");
 
-  // Confirm the user is a member of this group.
-  const membership = await db
-    .select()
-    .from(groupMembers)
-    .where(
-      and(
-        eq(groupMembers.groupId, id),
-        eq(groupMembers.userId, session.user.id),
-      ),
-    )
-    .limit(1);
+  let data;
+  try {
+    data = await getGroupDetail(id);
+  } catch {
+    redirect("/groups");
+  }
 
-  if (membership.length === 0) notFound();
+  const { group, members, expenses } = data;
 
-  const [group] = await db.select().from(groups).where(eq(groups.id, id));
-  if (!group) notFound();
+  // Bind the groupId into the server actions.
+  const addMemberAction = addMember.bind(null, id);
+  const addExpenseAction = addExpense.bind(null, id);
 
   return (
     <main className="mx-auto max-w-2xl p-6">
@@ -38,9 +28,101 @@ export default async function GroupDetailPage({
         ← Back to groups
       </Link>
       <h1 className="mt-4 text-2xl font-bold">{group.name}</h1>
-      <p className="mt-4 text-gray-500">
-        Expenses will appear here (coming in the next milestone).
-      </p>
+
+      {/* Members */}
+      <section className="mt-8">
+        <h2 className="text-lg font-semibold">Members ({members.length})</h2>
+        <ul className="mt-2 space-y-1 text-sm">
+          {members.map((m) => (
+            <li key={m.id} className="text-gray-700">
+              {m.name}{" "}
+              <span className="text-gray-400">({m.email})</span>
+            </li>
+          ))}
+        </ul>
+
+        <form action={addMemberAction} className="mt-3 flex gap-2">
+          <input
+            name="email"
+            type="email"
+            required
+            placeholder="Add member by email"
+            className="flex-1 rounded-md border px-3 py-2 text-sm"
+          />
+          <button className="rounded-md border px-3 py-2 text-sm hover:bg-gray-50">
+            Add
+          </button>
+        </form>
+        <p className="mt-1 text-xs text-gray-400">
+          The person must already have an account.
+        </p>
+      </section>
+
+      {/* Add expense */}
+      <section className="mt-8">
+        <h2 className="text-lg font-semibold">Add an expense</h2>
+        <form action={addExpenseAction} className="mt-3 space-y-3">
+          <input
+            name="description"
+            required
+            placeholder="Description (e.g. Dinner)"
+            className="w-full rounded-md border px-3 py-2 text-sm"
+          />
+          <input
+            name="amount"
+            type="number"
+            step="0.01"
+            min="0.01"
+            required
+            placeholder="Amount"
+            className="w-full rounded-md border px-3 py-2 text-sm"
+          />
+          <select
+            name="paidById"
+            required
+            defaultValue=""
+            className="w-full rounded-md border px-3 py-2 text-sm"
+          >
+            <option value="" disabled>
+                Who paid?
+            </option>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+                </option>
+            ))}
+          </select>
+          <button className="w-full rounded-md bg-black px-3 py-2 text-sm text-white">
+            Add expense
+          </button>
+        </form>
+        <p className="mt-1 text-xs text-gray-400">
+          Split evenly among all {members.length} member
+          {members.length === 1 ? "" : "s"}.
+        </p>
+      </section>
+
+      {/* Expense list */}
+      <section className="mt-8">
+        <h2 className="text-lg font-semibold">Expenses</h2>
+        {expenses.length === 0 ? (
+          <p className="mt-2 text-sm text-gray-400">No expenses yet.</p>
+        ) : (
+          <ul className="mt-2 divide-y">
+            {expenses.map((e) => (
+              <li key={e.id} className="flex justify-between py-3 text-sm">
+                <div>
+                  <span className="font-medium">{e.description}</span>
+                  <span className="ml-2 text-gray-400">
+                    paid by {e.paidByName}
+                  </span>
+                </div>
+                <span className="font-medium">${e.amount.toFixed(2)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </main>
   );
 }
