@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getGroupDetail, addMember, addExpense } from "../actions";
+import { getGroupDetail, addMember, addExpense, getSettlement } from "../actions";
 
 export default async function GroupDetailPage({
   params,
@@ -17,6 +17,7 @@ export default async function GroupDetailPage({
   }
 
   const { group, members, expenses } = data;
+  const settlement = await getSettlement(id);
 
   // Bind the groupId into the server actions.
   const addMemberAction = addMember.bind(null, id);
@@ -84,12 +85,12 @@ export default async function GroupDetailPage({
             className="w-full rounded-md border px-3 py-2 text-sm"
           >
             <option value="" disabled>
-                Who paid?
+              Who paid?
             </option>
             {members.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.name}
-                </option>
+              </option>
             ))}
           </select>
           <button className="w-full rounded-md bg-black px-3 py-2 text-sm text-white">
@@ -99,6 +100,34 @@ export default async function GroupDetailPage({
         <p className="mt-1 text-xs text-gray-400">
           Split evenly among all {members.length} member
           {members.length === 1 ? "" : "s"}.
+        </p>
+      </section>
+
+      {/* Settle up */}
+      <section className="mt-8">
+        <h2 className="text-lg font-semibold">Settle up</h2>
+        {settlement.length === 0 ? (
+          <p className="mt-2 text-sm text-gray-400">
+            All settled — nobody owes anything.
+          </p>
+        ) : (
+          <ul className="mt-2 space-y-2">
+            {settlement.map((t, i) => (
+              <li
+                key={i}
+                className="flex items-center justify-between rounded-md bg-gray-50 px-4 py-3 text-sm"
+              >
+                <span>
+                  <span className="font-medium">{t.from}</span> pays{" "}
+                  <span className="font-medium">{t.to}</span>
+                </span>
+                <span className="font-semibold">${t.amount.toFixed(2)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="mt-2 text-xs text-gray-400">
+          Minimal set of payments to settle all debts.
         </p>
       </section>
 

@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { groups, groupMembers, expenses, expenseSplits, user } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
+import { simplifyDebts, type ExpenseInput } from "@/lib/settle";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -98,11 +99,9 @@ export async function addMember(groupId: string, formData: FormData): Promise<vo
 
   const [target] = await db.select().from(user).where(eq(user.email, email)).limit(1);
   if (!target) {
-    // Silently return; in a real app we'd surface "no user with that email".
     redirect(`/groups/${groupId}?error=nouser`);
   }
 
-  // Skip if already a member.
   const existing = await db
     .select({ id: groupMembers.id })
     .from(groupMembers)
@@ -139,8 +138,6 @@ export async function addExpense(groupId: string, formData: FormData): Promise<v
 
   if (members.length === 0) redirect(`/groups/${groupId}`);
 
-  // Even split. Distribute any rounding remainder across the first members
-  // so the shares sum exactly to the total.
   const share = Math.floor((amount / members.length) * 100) / 100;
   const shares = members.map(() => share);
   let remainder = Math.round((amount - share * members.length) * 100) / 100;
@@ -164,4 +161,60 @@ export async function addExpense(groupId: string, formData: FormData): Promise<v
 
   revalidatePath(`/groups/${groupId}`);
   redirect(`/groups/${groupId}`);
+}
+
+/**
+ * Compute the minimal set of settle-up payments for a group.
+ * Pulls every expense + its splits, feeds them into the tested
+ * debt-simplification algorithm in lib/settle.ts, then maps the
+ * user IDs back to display names.
+ */
+export async function getSettlement(groupId: string) {
+  const currentUser = await requireUser();
+  await assertMember(groupId, currentUser.id);
+
+  const groupExpenses = await db
+    .select({ id: expenses.id, paidById: expenses.paidById })
+    .from(expenses)
+    .where(eq(expenses.groupId, groupId));
+
+  const allSplits = await db
+    .select({
+      expenseId: expenseSplits.expenseId,
+      userId: expenseSplits.userId,
+      amount: expenseSplits.amount,
+    })
+    .from(expenseSplits)
+    .innerJoin(expenses, eq(expenseSplits.expenseId, expenses.id))
+    .where(eq(expenses.groupId, groupId));
+
+  const splitsByExpense = new Map<string, { userId: string; amount: number }[]>();
+  for (const s of allSplits) {
+    const list = splitsByExpense.get(s.expenseId) ?? [];
+    list.push({ userId: s.userId, amount: s.amount });
+    splitsByExpense.set(s.expenseId, list);
+  }
+
+  const input: ExpenseInput[] = groupExpenses.map((e) => ({
+    paidById: e.paidById,
+    splits: splitsByExpense.get(e.id) ?? [],
+  }));
+
+  const transactions = simplifyDebts(input);
+
+  const names = new Map(
+    (
+      await db
+        .select({ id: user.id, name: user.name })
+        .from(groupMembers)
+        .innerJoin(user, eq(groupMembers.userId, user.id))
+        .where(eq(groupMembers.groupId, groupId))
+    ).map((r) => [r.id, r.name]),
+  );
+
+  return transactions.map((t) => ({
+    from: names.get(t.from) ?? "Unknown",
+    to: names.get(t.to) ?? "Unknown",
+    amount: t.amount,
+  }));
 }
