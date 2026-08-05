@@ -1,7 +1,3 @@
-
-
-https://github.com/user-attachments/assets/62a2d1a5-eef2-4bae-9647-c073eb7cda9a
-
 # 💸 Expense Splitter
 
 Split shared expenses with friends and settle up in the fewest possible payments.
@@ -9,13 +5,7 @@ Split shared expenses with friends and settle up in the fewest possible payments
 **[🔗 Live Demo](https://expense-splitter-virid.vercel.app)**
 
 
-
 https://github.com/user-attachments/assets/c33b0585-f4de-478a-a751-9bcd1e58cd62
-
-
-
-https://github.com/user-attachments/assets/5bf995c7-7a0c-4aa4-b9e2-81e57df37030
-
 
 
 ---
