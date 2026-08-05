@@ -1,3 +1,7 @@
+
+
+https://github.com/user-attachments/assets/62a2d1a5-eef2-4bae-9647-c073eb7cda9a
+
 # 💸 Expense Splitter
 
 Split shared expenses with friends and settle up in the fewest possible payments.
