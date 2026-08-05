@@ -1,6 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getGroupDetail, addMember, addExpense, getSettlement } from "../actions";
+import SiteHeader from "@/components/site-header";
+import {
+  getGroupDetail,
+  addMember,
+  addExpense,
+  getSettlement,
+  getBalances,
+} from "../actions";
 
 export default async function GroupDetailPage({
   params,
@@ -17,141 +24,215 @@ export default async function GroupDetailPage({
   }
 
   const { group, members, expenses } = data;
-  const settlement = await getSettlement(id);
+  const [settlement, balances] = await Promise.all([
+    getSettlement(id),
+    getBalances(id),
+  ]);
 
-  // Bind the groupId into the server actions.
   const addMemberAction = addMember.bind(null, id);
   const addExpenseAction = addExpense.bind(null, id);
 
+  const totalSpent = expenses.reduce((s, e) => s + e.amount, 0);
+
   return (
-    <main className="mx-auto max-w-2xl p-6">
-      <Link href="/groups" className="text-sm text-gray-500 hover:underline">
-        ← Back to groups
-      </Link>
-      <h1 className="mt-4 text-2xl font-bold">{group.name}</h1>
+    <>
+      <SiteHeader />
+      <main className="mx-auto max-w-2xl px-6 py-10">
+        <Link href="/groups" className="text-sm text-ink-soft hover:text-ink">
+          ← Back to groups
+        </Link>
 
-      {/* Members */}
-      <section className="mt-8">
-        <h2 className="text-lg font-semibold">Members ({members.length})</h2>
-        <ul className="mt-2 space-y-1 text-sm">
-          {members.map((m) => (
-            <li key={m.id} className="text-gray-700">
-              {m.name}{" "}
-              <span className="text-gray-400">({m.email})</span>
-            </li>
-          ))}
-        </ul>
-
-        <form action={addMemberAction} className="mt-3 flex gap-2">
-          <input
-            name="email"
-            type="email"
-            required
-            placeholder="Add member by email"
-            className="flex-1 rounded-md border px-3 py-2 text-sm"
-          />
-          <button className="rounded-md border px-3 py-2 text-sm hover:bg-gray-50">
-            Add
-          </button>
-        </form>
-        <p className="mt-1 text-xs text-gray-400">
-          The person must already have an account.
-        </p>
-      </section>
-
-      {/* Add expense */}
-      <section className="mt-8">
-        <h2 className="text-lg font-semibold">Add an expense</h2>
-        <form action={addExpenseAction} className="mt-3 space-y-3">
-          <input
-            name="description"
-            required
-            placeholder="Description (e.g. Dinner)"
-            className="w-full rounded-md border px-3 py-2 text-sm"
-          />
-          <input
-            name="amount"
-            type="number"
-            step="0.01"
-            min="0.01"
-            required
-            placeholder="Amount"
-            className="w-full rounded-md border px-3 py-2 text-sm"
-          />
-          <select
-            name="paidById"
-            required
-            defaultValue=""
-            className="w-full rounded-md border px-3 py-2 text-sm"
+        <div className="mt-4 flex items-end justify-between">
+          <h1
+            className="text-3xl text-ink"
+            style={{ fontFamily: "var(--font-fraunces)", fontWeight: 600 }}
           >
-            <option value="" disabled>
-              Who paid?
-            </option>
-            {members.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-          <button className="w-full rounded-md bg-black px-3 py-2 text-sm text-white">
-            Add expense
-          </button>
-        </form>
-        <p className="mt-1 text-xs text-gray-400">
-          Split evenly among all {members.length} member
-          {members.length === 1 ? "" : "s"}.
-        </p>
-      </section>
+            {group.name}
+          </h1>
+          <span className="text-sm text-ink-soft">
+            <span className="tnum">${totalSpent.toFixed(2)}</span> total
+          </span>
+        </div>
 
-      {/* Settle up */}
-      <section className="mt-8">
-        <h2 className="text-lg font-semibold">Settle up</h2>
-        {settlement.length === 0 ? (
-          <p className="mt-2 text-sm text-gray-400">
-            All settled — nobody owes anything.
-          </p>
-        ) : (
-          <ul className="mt-2 space-y-2">
-            {settlement.map((t, i) => (
-              <li
-                key={i}
-                className="flex items-center justify-between rounded-md bg-gray-50 px-4 py-3 text-sm"
-              >
-                <span>
-                  <span className="font-medium">{t.from}</span> pays{" "}
-                  <span className="font-medium">{t.to}</span>
-                </span>
-                <span className="font-semibold">${t.amount.toFixed(2)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        <p className="mt-2 text-xs text-gray-400">
-          Minimal set of payments to settle all debts.
-        </p>
-      </section>
-
-      {/* Expense list */}
-      <section className="mt-8">
-        <h2 className="text-lg font-semibold">Expenses</h2>
-        {expenses.length === 0 ? (
-          <p className="mt-2 text-sm text-gray-400">No expenses yet.</p>
-        ) : (
-          <ul className="mt-2 divide-y">
-            {expenses.map((e) => (
-              <li key={e.id} className="flex justify-between py-3 text-sm">
-                <div>
-                  <span className="font-medium">{e.description}</span>
-                  <span className="ml-2 text-gray-400">
-                    paid by {e.paidByName}
+        {/* Balance strip — the signature element */}
+        <section className="rise mt-6">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {balances.map((b) => {
+              const up = b.balance > 0.001;
+              const down = b.balance < -0.001;
+              return (
+                <div
+                  key={b.id}
+                  className="flex items-center justify-between rounded-xl border border-line bg-card px-4 py-3"
+                >
+                  <span className="font-medium text-ink">{b.name}</span>
+                  <span
+                    className="tnum text-sm font-semibold"
+                    style={{
+                      color: up
+                        ? "var(--credit)"
+                        : down
+                          ? "var(--owed)"
+                          : "var(--ink-soft)",
+                    }}
+                  >
+                    {up && "gets back "}
+                    {down && "owes "}
+                    {up || down
+                      ? `$${Math.abs(b.balance).toFixed(2)}`
+                      : "settled"}
                   </span>
                 </div>
-                <span className="font-medium">${e.amount.toFixed(2)}</span>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Settle up */}
+        <section className="mt-8">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-soft">
+            Settle up
+          </h2>
+          {settlement.length === 0 ? (
+            <p className="mt-3 rounded-xl border border-line bg-card px-4 py-4 text-sm text-ink-soft">
+              Everyone&apos;s square — no payments needed.
+            </p>
+          ) : (
+            <ul className="mt-3 space-y-2">
+              {settlement.map((t, i) => (
+                <li
+                  key={i}
+                  className="flex items-center justify-between rounded-xl border border-owed/20 bg-owed-soft px-4 py-3 text-sm"
+                >
+                  <span className="text-ink">
+                    <span className="font-semibold">{t.from}</span> pays{" "}
+                    <span className="font-semibold">{t.to}</span>
+                  </span>
+                  <span className="tnum font-semibold text-owed">
+                    ${t.amount.toFixed(2)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* Add expense */}
+        <section className="mt-8">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-soft">
+            Add an expense
+          </h2>
+          <form
+            action={addExpenseAction}
+            className="mt-3 space-y-3 rounded-xl border border-line bg-card p-4"
+          >
+            <input
+              name="description"
+              required
+              placeholder="What was it for? (e.g. Dinner)"
+              className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-sm outline-none focus:border-ink"
+            />
+            <div className="flex gap-3">
+              <input
+                name="amount"
+                type="number"
+                step="0.01"
+                min="0.01"
+                required
+                placeholder="Amount"
+                className="tnum w-32 rounded-lg border border-line bg-paper px-3 py-2.5 text-sm outline-none focus:border-ink"
+              />
+              <select
+                name="paidById"
+                required
+                defaultValue=""
+                className="flex-1 rounded-lg border border-line bg-paper px-3 py-2.5 text-sm outline-none focus:border-ink"
+              >
+                <option value="" disabled>
+                  Who paid?
+                </option>
+                {members.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button className="w-full rounded-lg bg-ink px-3 py-2.5 text-sm font-medium text-paper hover:opacity-90">
+              Add expense
+            </button>
+            <p className="text-xs text-ink-soft">
+              Split evenly among all {members.length} member
+              {members.length === 1 ? "" : "s"}.
+            </p>
+          </form>
+        </section>
+
+        {/* Expense list */}
+        <section className="mt-8">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-soft">
+            Expenses
+          </h2>
+          {expenses.length === 0 ? (
+            <p className="mt-3 text-sm text-ink-soft">
+              No expenses yet. Add your first one above.
+            </p>
+          ) : (
+            <ul className="mt-3 divide-y divide-line rounded-xl border border-line bg-card">
+              {expenses.map((e) => (
+                <li
+                  key={e.id}
+                  className="flex items-center justify-between px-4 py-3 text-sm"
+                >
+                  <div>
+                    <span className="font-medium text-ink">
+                      {e.description}
+                    </span>
+                    <span className="ml-2 text-ink-soft">
+                      paid by {e.paidByName}
+                    </span>
+                  </div>
+                  <span className="tnum font-medium text-ink">
+                    ${e.amount.toFixed(2)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* Members */}
+        <section className="mt-8">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-soft">
+            Members ({members.length})
+          </h2>
+          <ul className="mt-3 flex flex-wrap gap-2">
+            {members.map((m) => (
+              <li
+                key={m.id}
+                className="rounded-full border border-line bg-card px-3 py-1 text-sm text-ink"
+              >
+                {m.name}
               </li>
             ))}
           </ul>
-        )}
-      </section>
-    </main>
+          <form action={addMemberAction} className="mt-3 flex gap-2">
+            <input
+              name="email"
+              type="email"
+              required
+              placeholder="Add member by email"
+              className="flex-1 rounded-lg border border-line bg-card px-3 py-2.5 text-sm outline-none focus:border-ink"
+            />
+            <button className="rounded-lg border border-line px-4 py-2.5 text-sm text-ink hover:bg-card">
+              Add
+            </button>
+          </form>
+          <p className="mt-1 text-xs text-ink-soft">
+            They&apos;ll need to sign up first with that email.
+          </p>
+        </section>
+      </main>
+    </>
   );
 }

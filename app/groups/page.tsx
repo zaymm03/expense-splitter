@@ -1,42 +1,63 @@
 import Link from "next/link";
+import SiteHeader from "@/components/site-header";
 import { getMyGroups } from "./actions";
 
 export default async function GroupsPage() {
   const groups = await getMyGroups();
 
   return (
-    <main className="mx-auto max-w-2xl p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Your groups</h1>
-        <Link
-          href="/groups/new"
-          className="rounded-md bg-black px-3 py-2 text-sm text-white"
-        >
-          + New group
-        </Link>
-      </div>
-
-      {groups.length === 0 ? (
-        <div className="mt-10 rounded-lg border border-dashed p-10 text-center text-gray-500">
-          <p>No groups yet.</p>
-          <p className="mt-1 text-sm">
-            Create one to start splitting expenses.
-          </p>
+    <>
+      <SiteHeader />
+      <main className="mx-auto max-w-2xl px-6 py-10">
+        <div className="flex items-end justify-between">
+          <div>
+            <h1
+              className="text-3xl text-ink"
+              style={{ fontFamily: "var(--font-fraunces)", fontWeight: 600 }}
+            >
+              Your groups
+            </h1>
+            <p className="mt-1 text-sm text-ink-soft">
+              Trips, houses, and anything you share.
+            </p>
+          </div>
+          <Link
+            href="/groups/new"
+            className="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-paper hover:opacity-90"
+          >
+            New group
+          </Link>
         </div>
-      ) : (
-        <ul className="mt-6 space-y-2">
-          {groups.map((g) => (
-            <li key={g.id}>
-              <Link
-                href={`/groups/${g.id}`}
-                className="block rounded-md border p-4 hover:bg-gray-50"
-              >
-                <span className="font-medium">{g.name}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </main>
+
+        {groups.length === 0 ? (
+          <div className="mt-8 rounded-xl border border-dashed border-line bg-card p-12 text-center">
+            <p className="text-ink">No groups yet</p>
+            <p className="mt-1 text-sm text-ink-soft">
+              Create your first group to start splitting expenses.
+            </p>
+            <Link
+              href="/groups/new"
+              className="mt-5 inline-block rounded-lg bg-ink px-4 py-2 text-sm font-medium text-paper hover:opacity-90"
+            >
+              Create a group
+            </Link>
+          </div>
+        ) : (
+          <ul className="mt-8 space-y-3">
+            {groups.map((g) => (
+              <li key={g.id} className="rise">
+                <Link
+                  href={`/groups/${g.id}`}
+                  className="flex items-center justify-between rounded-xl border border-line bg-card p-5 transition hover:border-ink/30 hover:shadow-sm"
+                >
+                  <span className="font-medium text-ink">{g.name}</span>
+                  <span className="text-ink-soft">→</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </main>
+    </>
   );
 }

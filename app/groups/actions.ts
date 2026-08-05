@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { groups, groupMembers, expenses, expenseSplits, user } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
-import { simplifyDebts, type ExpenseInput } from "@/lib/settle";
+import { simplifyDebts, computeBalances, type ExpenseInput } from "@/lib/settle";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -15,7 +15,6 @@ async function requireUser() {
   return session.user;
 }
 
-/** Throws if the current user is not a member of the group. */
 async function assertMember(groupId: string, userId: string) {
   const rows = await db
     .select({ id: groupMembers.id })
@@ -60,7 +59,6 @@ export async function getMyGroups() {
     .where(eq(groupMembers.userId, currentUser.id));
 }
 
-/** Full detail for one group: members and expenses. */
 export async function getGroupDetail(groupId: string) {
   const currentUser = await requireUser();
   await assertMember(groupId, currentUser.id);
@@ -89,7 +87,6 @@ export async function getGroupDetail(groupId: string) {
   return { group, members, expenses: expenseRows };
 }
 
-/** Add an existing (signed-up) user to the group by their email. */
 export async function addMember(groupId: string, formData: FormData): Promise<void> {
   const currentUser = await requireUser();
   await assertMember(groupId, currentUser.id);
@@ -118,7 +115,6 @@ export async function addMember(groupId: string, formData: FormData): Promise<vo
   redirect(`/groups/${groupId}`);
 }
 
-/** Add an expense, split evenly among all current members. */
 export async function addExpense(groupId: string, formData: FormData): Promise<void> {
   const currentUser = await requireUser();
   await assertMember(groupId, currentUser.id);
@@ -163,12 +159,6 @@ export async function addExpense(groupId: string, formData: FormData): Promise<v
   redirect(`/groups/${groupId}`);
 }
 
-/**
- * Compute the minimal set of settle-up payments for a group.
- * Pulls every expense + its splits, feeds them into the tested
- * debt-simplification algorithm in lib/settle.ts, then maps the
- * user IDs back to display names.
- */
 export async function getSettlement(groupId: string) {
   const currentUser = await requireUser();
   await assertMember(groupId, currentUser.id);
@@ -216,5 +206,51 @@ export async function getSettlement(groupId: string) {
     from: names.get(t.from) ?? "Unknown",
     to: names.get(t.to) ?? "Unknown",
     amount: t.amount,
+  }));
+}
+
+export async function getBalances(groupId: string) {
+  const currentUser = await requireUser();
+  await assertMember(groupId, currentUser.id);
+
+  const groupExpenses = await db
+    .select({ id: expenses.id, paidById: expenses.paidById })
+    .from(expenses)
+    .where(eq(expenses.groupId, groupId));
+
+  const allSplits = await db
+    .select({
+      expenseId: expenseSplits.expenseId,
+      userId: expenseSplits.userId,
+      amount: expenseSplits.amount,
+    })
+    .from(expenseSplits)
+    .innerJoin(expenses, eq(expenseSplits.expenseId, expenses.id))
+    .where(eq(expenses.groupId, groupId));
+
+  const splitsByExpense = new Map<string, { userId: string; amount: number }[]>();
+  for (const s of allSplits) {
+    const list = splitsByExpense.get(s.expenseId) ?? [];
+    list.push({ userId: s.userId, amount: s.amount });
+    splitsByExpense.set(s.expenseId, list);
+  }
+
+  const input: ExpenseInput[] = groupExpenses.map((e) => ({
+    paidById: e.paidById,
+    splits: splitsByExpense.get(e.id) ?? [],
+  }));
+
+  const balances = computeBalances(input);
+
+  const members = await db
+    .select({ id: user.id, name: user.name })
+    .from(groupMembers)
+    .innerJoin(user, eq(groupMembers.userId, user.id))
+    .where(eq(groupMembers.groupId, groupId));
+
+  return members.map((m) => ({
+    id: m.id,
+    name: m.name,
+    balance: Math.round((balances.get(m.id) ?? 0) * 100) / 100,
   }));
 }
