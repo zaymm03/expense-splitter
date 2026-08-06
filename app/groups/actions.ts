@@ -136,8 +136,6 @@ export async function addExpense(groupId: string, formData: FormData): Promise<v
 
   if (members.length === 0) redirect(`/groups/${groupId}`);
 
-  // Build participants. For exact/percent, per-person values come from the form
-  // as fields named `value_<userId>`.
   const participants = members.map((m) => ({
     userId: m.userId,
     value:
@@ -262,4 +260,114 @@ export async function getBalances(groupId: string) {
     name: m.name,
     balance: Math.round((balances.get(m.id) ?? 0) * 100) / 100,
   }));
+}
+
+/** Delete an expense (its splits cascade-delete via the FK). */
+export async function deleteExpense(
+  groupId: string,
+  expenseId: string,
+): Promise<void> {
+  const currentUser = await requireUser();
+  await assertMember(groupId, currentUser.id);
+
+  const [target] = await db
+    .select({ id: expenses.id })
+    .from(expenses)
+    .where(and(eq(expenses.id, expenseId), eq(expenses.groupId, groupId)))
+    .limit(1);
+
+  if (target) {
+    await db.delete(expenses).where(eq(expenses.id, expenseId));
+  }
+
+  revalidatePath(`/groups/${groupId}`);
+  redirect(`/groups/${groupId}`);
+}
+
+/** Fetch one expense plus its current per-person splits, for the edit form. */
+export async function getExpense(groupId: string, expenseId: string) {
+  const currentUser = await requireUser();
+  await assertMember(groupId, currentUser.id);
+
+  const [expense] = await db
+    .select()
+    .from(expenses)
+    .where(and(eq(expenses.id, expenseId), eq(expenses.groupId, groupId)))
+    .limit(1);
+
+  if (!expense) throw new Error("Expense not found.");
+
+  const splits = await db
+    .select({ userId: expenseSplits.userId, amount: expenseSplits.amount })
+    .from(expenseSplits)
+    .where(eq(expenseSplits.expenseId, expenseId));
+
+  const members = await db
+    .select({ id: user.id, name: user.name })
+    .from(groupMembers)
+    .innerJoin(user, eq(groupMembers.userId, user.id))
+    .where(eq(groupMembers.groupId, groupId));
+
+  return { expense, splits, members };
+}
+
+/** Update an expense: rewrite its fields and re-create its splits. */
+export async function updateExpense(
+  groupId: string,
+  expenseId: string,
+  formData: FormData,
+): Promise<void> {
+  const currentUser = await requireUser();
+  await assertMember(groupId, currentUser.id);
+
+  const [existing] = await db
+    .select({ id: expenses.id })
+    .from(expenses)
+    .where(and(eq(expenses.id, expenseId), eq(expenses.groupId, groupId)))
+    .limit(1);
+  if (!existing) redirect(`/groups/${groupId}`);
+
+  const description = String(formData.get("description") ?? "").trim();
+  const amount = Number(formData.get("amount"));
+  const paidById = String(formData.get("paidById") ?? "").trim();
+  const mode = String(formData.get("mode") ?? "even") as SplitMode;
+
+  if (!description || !amount || amount <= 0 || !paidById) {
+    redirect(`/groups/${groupId}/expenses/${expenseId}/edit`);
+  }
+
+  const members = await db
+    .select({ userId: groupMembers.userId })
+    .from(groupMembers)
+    .where(eq(groupMembers.groupId, groupId));
+
+  const participants = members.map((m) => ({
+    userId: m.userId,
+    value:
+      mode === "even"
+        ? undefined
+        : Number(formData.get(`value_${m.userId}`) ?? 0),
+  }));
+
+  const split = computeSplit(mode, amount, participants);
+  if (!split.ok) {
+    redirect(`/groups/${groupId}/expenses/${expenseId}/edit?error=split`);
+  }
+
+  await db
+    .update(expenses)
+    .set({ description, amount, paidById })
+    .where(eq(expenses.id, expenseId));
+
+  await db.delete(expenseSplits).where(eq(expenseSplits.expenseId, expenseId));
+  await db.insert(expenseSplits).values(
+    split.result.map((s) => ({
+      expenseId,
+      userId: s.userId,
+      amount: s.amount,
+    })),
+  );
+
+  revalidatePath(`/groups/${groupId}`);
+  redirect(`/groups/${groupId}`);
 }

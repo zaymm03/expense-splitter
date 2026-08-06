@@ -2,12 +2,14 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import ExpenseForm from "./expense-form";
+import DeleteExpenseButton from "./delete-expense-button";
 import {
   getGroupDetail,
   addMember,
   addExpense,
   getSettlement,
   getBalances,
+  deleteExpense,
 } from "../actions";
 
 export default async function GroupDetailPage({
@@ -145,24 +147,36 @@ export default async function GroupDetailPage({
             </p>
           ) : (
             <ul className="mt-3 divide-y divide-line rounded-xl border border-line bg-card">
-              {expenses.map((e) => (
-                <li
-                  key={e.id}
-                  className="flex items-center justify-between px-4 py-3 text-sm"
-                >
-                  <div>
-                    <span className="font-medium text-ink">
-                      {e.description}
-                    </span>
-                    <span className="ml-2 text-ink-soft">
-                      paid by {e.paidByName}
-                    </span>
-                  </div>
-                  <span className="tnum font-medium text-ink">
-                    RM {e.amount.toFixed(2)}
-                  </span>
-                </li>
-              ))}
+              {expenses.map((e) => {
+                const deleteAction = deleteExpense.bind(null, id, e.id);
+                return (
+                  <li
+                    key={e.id}
+                    className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
+                  >
+                    <div className="min-w-0">
+                      <span className="font-medium text-ink">
+                        {e.description}
+                      </span>
+                      <span className="ml-2 text-ink-soft">
+                        paid by {e.paidByName}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="tnum font-medium text-ink">
+                        RM {e.amount.toFixed(2)}
+                      </span>
+                      <Link
+                        href={`/groups/${id}/expenses/${e.id}/edit`}
+                        className="text-xs text-ink-soft hover:text-ink"
+                      >
+                        Edit
+                      </Link>
+                      <DeleteExpenseButton action={deleteAction} />
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>

@@ -5,22 +5,35 @@ import type { SplitMode } from "@/lib/splits";
 
 type Member = { id: string; name: string };
 
+export interface ExpenseFormInitial {
+  description: string;
+  amount: string;
+  paidById: string;
+  mode: SplitMode;
+  values: Record<string, string>;
+}
+
 export default function ExpenseForm({
   members,
   action,
+  initial,
+  submitLabel = "Add expense",
 }: {
   members: Member[];
   action: (formData: FormData) => void;
+  initial?: ExpenseFormInitial;
+  submitLabel?: string;
 }) {
-  const [mode, setMode] = useState<SplitMode>("even");
-  const [amount, setAmount] = useState("");
-  const [values, setValues] = useState<Record<string, string>>({});
+  const [mode, setMode] = useState<SplitMode>(initial?.mode ?? "even");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [amount, setAmount] = useState(initial?.amount ?? "");
+  const [paidById, setPaidById] = useState(initial?.paidById ?? "");
+  const [values, setValues] = useState<Record<string, string>>(
+    initial?.values ?? {},
+  );
 
   const total = Number(amount) || 0;
-  const entered = members.reduce(
-    (s, m) => s + (Number(values[m.id]) || 0),
-    0,
-  );
+  const entered = members.reduce((s, m) => s + (Number(values[m.id]) || 0), 0);
 
   let hint: { text: string; ok: boolean } | null = null;
   if (mode === "exact" && total > 0) {
@@ -57,6 +70,8 @@ export default function ExpenseForm({
       <input
         name="description"
         required
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
         placeholder="What was it for? (e.g. Dinner)"
         className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-sm outline-none focus:border-ink"
       />
@@ -76,7 +91,8 @@ export default function ExpenseForm({
         <select
           name="paidById"
           required
-          defaultValue=""
+          value={paidById}
+          onChange={(e) => setPaidById(e.target.value)}
           className="flex-1 rounded-lg border border-line bg-paper px-3 py-2.5 text-sm outline-none focus:border-ink"
         >
           <option value="" disabled>
@@ -104,9 +120,7 @@ export default function ExpenseForm({
             type="button"
             onClick={() => setMode(m)}
             className={`flex-1 rounded-md px-3 py-1.5 transition ${
-              mode === m
-                ? "bg-ink text-paper"
-                : "text-ink-soft hover:text-ink"
+              mode === m ? "bg-ink text-paper" : "text-ink-soft hover:text-ink"
             }`}
           >
             {label}
@@ -153,7 +167,7 @@ export default function ExpenseForm({
       )}
 
       <button className="w-full rounded-lg bg-ink px-3 py-2.5 text-sm font-medium text-paper hover:opacity-90">
-        Add expense
+        {submitLabel}
       </button>
       <p className="text-xs text-ink-soft">
         {mode === "even"
