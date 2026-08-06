@@ -50,7 +50,7 @@ export default async function GroupDetailPage({
             {group.name}
           </h1>
           <span className="text-sm text-ink-soft">
-            <span className="tnum">${totalSpent.toFixed(2)}</span> total
+            <span className="tnum">RM {totalSpent.toFixed(2)}</span> total
           </span>
         </div>
 
@@ -79,7 +79,7 @@ export default async function GroupDetailPage({
                     {up && "gets back "}
                     {down && "owes "}
                     {up || down
-                      ? `$${Math.abs(b.balance).toFixed(2)}`
+                      ? `RM ${Math.abs(b.balance).toFixed(2)}`
                       : "settled"}
                   </span>
                 </div>
@@ -109,7 +109,7 @@ export default async function GroupDetailPage({
                     <span className="font-semibold">{t.to}</span>
                   </span>
                   <span className="tnum font-semibold text-owed">
-                    ${t.amount.toFixed(2)}
+                    RM {t.amount.toFixed(2)}
                   </span>
                 </li>
               ))}
@@ -193,7 +193,7 @@ export default async function GroupDetailPage({
                     </span>
                   </div>
                   <span className="tnum font-medium text-ink">
-                    ${e.amount.toFixed(2)}
+                    RM {e.amount.toFixed(2)}
                   </span>
                 </li>
               ))}
