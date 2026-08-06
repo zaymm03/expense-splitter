@@ -2,9 +2,9 @@
 
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
-import { groups, groupMembers, expenses, expenseSplits, user } from "@/db/schema";
+import { groups, groupMembers, expenses, expenseSplits, settlements, user } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
-import { simplifyDebts, computeBalances, type ExpenseInput } from "@/lib/settle";
+import { simplifyDebts, computeBalances, settle as settleFromBalances, type ExpenseInput } from "@/lib/settle";
 import { computeSplit, type SplitMode } from "@/lib/splits";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
@@ -25,6 +25,22 @@ async function assertMember(groupId: string, userId: string) {
     )
     .limit(1);
   if (rows.length === 0) throw new Error("Not a member of this group.");
+}
+
+/**
+ * Apply recorded settlements to a raw balances map.
+ * A payment from X to Y means X has paid down debt: X's net rises, Y's falls.
+ */
+function applySettlements(
+  balances: Map<string, number>,
+  paid: { fromId: string; toId: string; amount: number }[],
+) {
+  for (const s of paid) {
+    balances.set(s.fromId, (balances.get(s.fromId) ?? 0) + s.amount);
+    balances.set(s.toId, (balances.get(s.toId) ?? 0) - s.amount);
+  }
+  for (const [k, v] of balances) balances.set(k, Math.round(v * 100) / 100);
+  return balances;
 }
 
 export async function createGroup(formData: FormData): Promise<void> {
@@ -197,7 +213,13 @@ export async function getSettlement(groupId: string) {
     splits: splitsByExpense.get(e.id) ?? [],
   }));
 
-  const transactions = simplifyDebts(input);
+  const paid = await db
+    .select({ fromId: settlements.fromId, toId: settlements.toId, amount: settlements.amount })
+    .from(settlements)
+    .where(eq(settlements.groupId, groupId));
+
+  const balancesForSettle = applySettlements(computeBalances(input), paid);
+  const transactions = settleFromBalances(balancesForSettle);
 
   const names = new Map(
     (
@@ -247,7 +269,12 @@ export async function getBalances(groupId: string) {
     splits: splitsByExpense.get(e.id) ?? [],
   }));
 
-  const balances = computeBalances(input);
+  const paid = await db
+    .select({ fromId: settlements.fromId, toId: settlements.toId, amount: settlements.amount })
+    .from(settlements)
+    .where(eq(settlements.groupId, groupId));
+
+  const balances = applySettlements(computeBalances(input), paid);
 
   const members = await db
     .select({ id: user.id, name: user.name })
@@ -370,4 +397,61 @@ export async function updateExpense(
 
   revalidatePath(`/groups/${groupId}`);
   redirect(`/groups/${groupId}`);
+}
+
+/** Record that one member paid another. */
+export async function recordSettlement(
+  groupId: string,
+  formData: FormData,
+): Promise<void> {
+  const currentUser = await requireUser();
+  await assertMember(groupId, currentUser.id);
+
+  const fromId = String(formData.get("fromId") ?? "").trim();
+  const toId = String(formData.get("toId") ?? "").trim();
+  const amount = Number(formData.get("amount"));
+
+  if (!fromId || !toId || fromId === toId || !amount || amount <= 0) {
+    redirect(`/groups/${groupId}`);
+  }
+
+  await db.insert(settlements).values({ groupId, fromId, toId, amount });
+
+  revalidatePath(`/groups/${groupId}`);
+  redirect(`/groups/${groupId}`);
+}
+
+/** List recorded settlements (payment history) for a group. */
+export async function getSettlementHistory(groupId: string) {
+  const currentUser = await requireUser();
+  await assertMember(groupId, currentUser.id);
+
+  const rows = await db
+    .select({
+      id: settlements.id,
+      amount: settlements.amount,
+      fromId: settlements.fromId,
+      toId: settlements.toId,
+      createdAt: settlements.createdAt,
+    })
+    .from(settlements)
+    .where(eq(settlements.groupId, groupId));
+
+  const names = new Map(
+    (
+      await db
+        .select({ id: user.id, name: user.name })
+        .from(groupMembers)
+        .innerJoin(user, eq(groupMembers.userId, user.id))
+        .where(eq(groupMembers.groupId, groupId))
+    ).map((r) => [r.id, r.name] as const),
+  );
+
+  return rows.map((r) => ({
+    id: r.id,
+    amount: r.amount,
+    fromName: names.get(r.fromId) ?? "Unknown",
+    toName: names.get(r.toId) ?? "Unknown",
+    createdAt: r.createdAt,
+  }));
 }

@@ -58,6 +58,24 @@ export const expenseSplits = sqliteTable("expense_splits", {
   amount: real("amount").notNull(),
 });
 
+// ---- Settlements (recorded payments between members) ----
+export const settlements = sqliteTable("settlements", {
+  id: text("id").primaryKey().$defaultFn(() => createId()),
+  groupId: text("group_id")
+    .notNull()
+    .references(() => groups.id, { onDelete: "cascade" }),
+  fromId: text("from_id")
+    .notNull()
+    .references(() => user.id),
+  toId: text("to_id")
+    .notNull()
+    .references(() => user.id),
+  amount: real("amount").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
 // ---- Relations ----
 export const groupsRelations = relations(groups, ({ one, many }) => ({
   owner: one(user, { fields: [groups.ownerId], references: [user.id] }),
@@ -82,4 +100,10 @@ export const expenseSplitsRelations = relations(expenseSplits, ({ one }) => ({
     references: [expenses.id],
   }),
   member: one(user, { fields: [expenseSplits.userId], references: [user.id] }),
+}));
+
+export const settlementsRelations = relations(settlements, ({ one }) => ({
+  group: one(groups, { fields: [settlements.groupId], references: [groups.id] }),
+  from: one(user, { fields: [settlements.fromId], references: [user.id] }),
+  to: one(user, { fields: [settlements.toId], references: [user.id] }),
 }));

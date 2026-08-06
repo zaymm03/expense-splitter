@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import SiteHeader from "@/components/site-header";
 import ExpenseForm from "./expense-form";
 import DeleteExpenseButton from "./delete-expense-button";
+import SettleForm from "./settle-form";
 import {
   getGroupDetail,
   addMember,
@@ -10,6 +11,8 @@ import {
   getSettlement,
   getBalances,
   deleteExpense,
+  recordSettlement,
+  getSettlementHistory,
 } from "../actions";
 
 export default async function GroupDetailPage({
@@ -30,13 +33,15 @@ export default async function GroupDetailPage({
   }
 
   const { group, members, expenses } = data;
-  const [settlement, balances] = await Promise.all([
+  const [settlement, balances, history] = await Promise.all([
     getSettlement(id),
     getBalances(id),
+    getSettlementHistory(id),
   ]);
 
   const addMemberAction = addMember.bind(null, id);
   const addExpenseAction = addExpense.bind(null, id);
+  const settleAction = recordSettlement.bind(null, id);
 
   const totalSpent = expenses.reduce((s, e) => s + e.amount, 0);
 
@@ -120,6 +125,27 @@ export default async function GroupDetailPage({
                 </li>
               ))}
             </ul>
+          )}
+
+          <SettleForm members={members} action={settleAction} />
+
+          {history.length > 0 && (
+            <div className="mt-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">
+                Payment history
+              </p>
+              <ul className="mt-2 space-y-1 text-sm">
+                {history.map((h) => (
+                  <li key={h.id} className="flex justify-between text-ink-soft">
+                    <span>
+                      <span className="text-ink">{h.fromName}</span> paid{" "}
+                      <span className="text-ink">{h.toName}</span>
+                    </span>
+                    <span className="tnum">RM {h.amount.toFixed(2)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </section>
 
