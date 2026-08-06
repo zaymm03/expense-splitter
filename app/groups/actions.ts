@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { groups, groupMembers, expenses, expenseSplits, user } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { simplifyDebts, computeBalances, type ExpenseInput } from "@/lib/settle";
+import { computeSplit, type SplitMode } from "@/lib/splits";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -122,6 +123,7 @@ export async function addExpense(groupId: string, formData: FormData): Promise<v
   const description = String(formData.get("description") ?? "").trim();
   const amount = Number(formData.get("amount"));
   const paidById = String(formData.get("paidById") ?? "").trim();
+  const mode = (String(formData.get("mode") ?? "even") as SplitMode);
 
   if (!description || !amount || amount <= 0 || !paidById) {
     redirect(`/groups/${groupId}`);
@@ -134,12 +136,19 @@ export async function addExpense(groupId: string, formData: FormData): Promise<v
 
   if (members.length === 0) redirect(`/groups/${groupId}`);
 
-  const share = Math.floor((amount / members.length) * 100) / 100;
-  const shares = members.map(() => share);
-  let remainder = Math.round((amount - share * members.length) * 100) / 100;
-  for (let i = 0; remainder > 0 && i < shares.length; i++) {
-    shares[i] = Math.round((shares[i] + 0.01) * 100) / 100;
-    remainder = Math.round((remainder - 0.01) * 100) / 100;
+  // Build participants. For exact/percent, per-person values come from the form
+  // as fields named `value_<userId>`.
+  const participants = members.map((m) => ({
+    userId: m.userId,
+    value:
+      mode === "even"
+        ? undefined
+        : Number(formData.get(`value_${m.userId}`) ?? 0),
+  }));
+
+  const split = computeSplit(mode, amount, participants);
+  if (!split.ok) {
+    redirect(`/groups/${groupId}?error=split`);
   }
 
   const [expense] = await db
@@ -148,10 +157,10 @@ export async function addExpense(groupId: string, formData: FormData): Promise<v
     .returning();
 
   await db.insert(expenseSplits).values(
-    members.map((m, i) => ({
+    split.result.map((s) => ({
       expenseId: expense.id,
-      userId: m.userId,
-      amount: shares[i],
+      userId: s.userId,
+      amount: s.amount,
     })),
   );
 

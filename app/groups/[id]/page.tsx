@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import SiteHeader from "@/components/site-header";
+import ExpenseForm from "./expense-form";
 import {
   getGroupDetail,
   addMember,
@@ -11,10 +12,13 @@ import {
 
 export default async function GroupDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ error?: string }>;
 }) {
   const { id } = await params;
+  const { error } = await searchParams;
 
   let data;
   try {
@@ -122,50 +126,12 @@ export default async function GroupDetailPage({
           <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-soft">
             Add an expense
           </h2>
-          <form
-            action={addExpenseAction}
-            className="mt-3 space-y-3 rounded-xl border border-line bg-card p-4"
-          >
-            <input
-              name="description"
-              required
-              placeholder="What was it for? (e.g. Dinner)"
-              className="w-full rounded-lg border border-line bg-paper px-3 py-2.5 text-sm outline-none focus:border-ink"
-            />
-            <div className="flex gap-3">
-              <input
-                name="amount"
-                type="number"
-                step="0.01"
-                min="0.01"
-                required
-                placeholder="Amount"
-                className="tnum w-32 rounded-lg border border-line bg-paper px-3 py-2.5 text-sm outline-none focus:border-ink"
-              />
-              <select
-                name="paidById"
-                required
-                defaultValue=""
-                className="flex-1 rounded-lg border border-line bg-paper px-3 py-2.5 text-sm outline-none focus:border-ink"
-              >
-                <option value="" disabled>
-                  Who paid?
-                </option>
-                {members.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <button className="w-full rounded-lg bg-ink px-3 py-2.5 text-sm font-medium text-paper hover:opacity-90">
-              Add expense
-            </button>
-            <p className="text-xs text-ink-soft">
-              Split evenly among all {members.length} member
-              {members.length === 1 ? "" : "s"}.
+          {error === "split" && (
+            <p className="mt-3 rounded-lg bg-owed-soft px-3 py-2 text-sm text-owed">
+              Those shares didn&apos;t add up to the total. Please try again.
             </p>
-          </form>
+          )}
+          <ExpenseForm members={members} action={addExpenseAction} />
         </section>
 
         {/* Expense list */}
